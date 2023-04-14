@@ -13,7 +13,6 @@ namespace ZendService\Google\Gcm;
 
 use ZendService\Google\Exception;
 use Zend\Http\Client as HttpClient;
-use Zend\Json\Json;
 
 /**
  * Google Cloud Messaging Client
@@ -147,7 +146,7 @@ class Client
                 break;
         }
 
-        if (! $response = Json::decode($response->getBody(), Json::TYPE_ARRAY)) {
+        if (! $response = json_encode($response->getBody(), false)) {
             throw new Exception\RuntimeException('Response body did not contain a valid JSON response');
         }
 
