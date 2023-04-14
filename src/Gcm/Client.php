@@ -146,7 +146,7 @@ class Client
                 break;
         }
 
-        if (! $response = json_decode($response->getBody(), false)) {
+        if (! $response = json_decode($response->getBody(), true)) {
             throw new Exception\RuntimeException('Response body did not contain a valid JSON response');
         }
 
