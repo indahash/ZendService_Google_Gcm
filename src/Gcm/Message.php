@@ -12,7 +12,6 @@
 namespace ZendService\Google\Gcm;
 
 use ZendService\Google\Exception;
-use Zend\Json\Json;
 
 /**
  * Google Cloud Messaging Message
@@ -447,6 +446,6 @@ class Message
             $json['dry_run'] = $this->dryRun;
         }
 
-        return Json::encode($json);
+        return json_encode($json);
     }
 }
