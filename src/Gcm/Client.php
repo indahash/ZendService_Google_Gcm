@@ -26,7 +26,7 @@ class Client
     /**
      * @const string Server URI
      */
-    const SERVER_URI = 'https://fcm.googleapis.com/fcm/send';
+    const SERVER_URI = 'https://fcm.googleapis.com/v1/projects/{project_id}/messages:send';
 
     /**
      * @var \Zend\Http\Client
@@ -115,17 +115,87 @@ class Client
      */
     public function send(Message $message)
     {
+        // === 1. Parse service account JSON string ===
+        $serviceAccountJson = $this->getApiKey(); // Now returns JSON string, not a file path
+        $serviceAccount = json_decode($serviceAccountJson, true);
+
+        if (!is_array($serviceAccount) || !isset($serviceAccount['project_id'])) {
+            throw new \RuntimeException('Invalid Firebase service account JSON from getApiKey().');
+        }
+
+        $projectId = $serviceAccount['project_id'];
+
+        // === 2. Token caching ===
+        $cacheFile = "/tmp/android-push-token-{$projectId}.json";
+        $accessToken = null;
+
+        if (file_exists($cacheFile)) {
+            $cached = json_decode(file_get_contents($cacheFile), true);
+
+            if (
+                is_array($cached) &&
+                isset($cached['access_token'], $cached['expires_at']) &&
+                (int)$cached['expires_at'] > time()
+            ) {
+                $accessToken = $cached['access_token'];
+            }
+        }
+
+        if (!$accessToken) {
+            $scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
+            $credentials = new \Google\Auth\Credentials\ServiceAccountCredentials($scopes, $serviceAccount);
+            $tokenData = $credentials->fetchAuthToken();
+
+            if (!isset($tokenData['access_token'], $tokenData['expires_in'])) {
+                throw new \RuntimeException('Failed to obtain Firebase access token.');
+            }
+
+            $accessToken = $tokenData['access_token'];
+            file_put_contents($cacheFile, json_encode([
+                'access_token' => $accessToken,
+                'expires_at' => time() + $tokenData['expires_in'] - 120 // 120s buffer
+            ]));
+        }
+
+        // === 3. Replace {project_id} in URI ===
+        $url = str_replace('{project_id}', $projectId, self::SERVER_URI);
+
+        // === 4. Convert legacy message to v1 format ===
+        $legacy = json_decode($message->toJson(), true);
+
+        if (!is_array($legacy)) {
+            throw new \RuntimeException('Invalid message JSON structure.');
+        }
+
+        $v1Payload = [
+            'message' => []
+        ];
+
+        if (isset($legacy['to'])) {
+            $v1Payload['message']['token'] = $legacy['to'];
+        }
+
+        if (isset($legacy['notification'])) {
+            $v1Payload['message']['notification'] = $legacy['notification'];
+        }
+
+        if (isset($legacy['data'])) {
+            $v1Payload['message']['data'] = $legacy['data'];
+        }
+
+        $v1PayloadJson = json_encode($v1Payload);
+
         $client = $this->getHttpClient();
-        $client->setUri(self::SERVER_URI);
+        $client->setUri($url);
         $headers = $client->getRequest()->getHeaders();
-        $headers->addHeaderLine('Authorization', 'key=' . $this->getApiKey());
-        $headers->addHeaderLine('Content-length', mb_strlen($message->toJson()));
+        $headers->addHeaderLine('Authorization', 'Bearer ' . $accessToken);
+        $headers->addHeaderLine('Content-length', mb_strlen($v1PayloadJson));
 
         $response = $client->setHeaders($headers)
-                           ->setMethod('POST')
-                           ->setRawBody($message->toJson())
-                           ->setEncType('application/json')
-                           ->send();
+            ->setMethod('POST')
+            ->setRawBody($v1PayloadJson)
+            ->setEncType('application/json')
+            ->send();
 
         switch ($response->getStatusCode()) {
             case 500:
