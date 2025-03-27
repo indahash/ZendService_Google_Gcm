@@ -192,6 +192,7 @@ class Client
         if (isset($legacy['priority'])) {
             $androidConfig['priority'] = strtoupper($legacy['priority']);
         }
+
         if (isset($legacy['time_to_live'])) {
             $androidConfig['ttl'] = $legacy['time_to_live'] . 's';
         }
