@@ -153,7 +153,7 @@ class Client
             $accessToken = $tokenData['access_token'];
             file_put_contents($cacheFile, json_encode([
                 'access_token' => $accessToken,
-                'expires_at' => time() + $tokenData['expires_in'] - 120 // 120s buffer
+                'expires_at' => time() + $tokenData['expires_in'] - 240, // 240s buffer
             ]));
         }
 
@@ -171,16 +171,33 @@ class Client
             'message' => []
         ];
 
+        // Token (support legacy registration_ids[0])
         if (isset($legacy['to'])) {
             $v1Payload['message']['token'] = $legacy['to'];
+        } elseif (!empty($legacy['registration_ids'][0])) {
+            $v1Payload['message']['token'] = $legacy['registration_ids'][0];
+        }
+
+        if (isset($legacy['data'])) {
+            $v1Payload['message']['data'] = $legacy['data'];
         }
 
         if (isset($legacy['notification'])) {
             $v1Payload['message']['notification'] = $legacy['notification'];
         }
 
-        if (isset($legacy['data'])) {
-            $v1Payload['message']['data'] = $legacy['data'];
+        // Android-specific config
+        $androidConfig = [];
+
+        if (isset($legacy['priority'])) {
+            $androidConfig['priority'] = strtoupper($legacy['priority']);
+        }
+        if (isset($legacy['time_to_live'])) {
+            $androidConfig['ttl'] = $legacy['time_to_live'] . 's';
+        }
+
+        if (!empty($androidConfig)) {
+            $v1Payload['message']['android'] = $androidConfig;
         }
 
         $v1PayloadJson = json_encode($v1Payload);
